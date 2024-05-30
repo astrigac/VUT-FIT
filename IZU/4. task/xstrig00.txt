@@ -1,0 +1,55 @@
+Zadani c. 392
+
+Metodou K-means clustering zaradte nasledujci body (x,y,z) v 3D prostoru 
+(-3, 4, 8) (-8,-6,-4) (-7, 8, 2) ( 5, 7,-8) ( 5,-7, 8) ( 6, 9, 3) (-4, 8, 8) (-9, 6, 7) (-8,-3, 7) (-5, 3,-7) 
+do 3 shluku s pocatecnimi stredy 
+(-4, 8, 8) (-5, 3,-7) (-9, 6, 7).
+
+Vysledky vypoctu zaokrouhlujte na dve desetinna mista. 
+
+Iteracia c. 1
+Shluk 1:
+    Stred: (-4.00, 8.00, 8.00)
+    Body: (-3, 4, 8) (5, -7, 8) (6, 9, 3) (-4, 8, 8)
+Shluk 2:
+    Stred: (-5.00, 3.00, -7.00)
+    Body: (-8, -6, -4) (5, 7, -8) (-5, 3, -7)
+Shluk 3:
+    Stred: (-9.00, 6.00, 7.00)
+    Body: (-7, 8, 2) (-9, 6, 7) (-8, -3, 7)
+
+
+Iteracia c. 2
+Shluk 1:
+    Stred: (1.00, 3.50, 6.75)
+    Body: (-3, 4, 8) (5, -7, 8) (6, 9, 3)
+Shluk 2:
+    Stred: (-2.67, 1.33, -6.33)
+    Body: (-8, -6, -4) (5, 7, -8) (-5, 3, -7)
+Shluk 3:
+    Stred: (-8.00, 3.67, 5.33)
+    Body: (-7, 8, 2) (-4, 8, 8) (-9, 6, 7) (-8, -3, 7)
+
+
+Iteracia c. 3
+Shluk 1:
+    Stred: (2.67, 2.00, 6.33)
+    Body: (5, -7, 8) (6, 9, 3)
+Shluk 2:
+    Stred: (-2.67, 1.33, -6.33)
+    Body: (-8, -6, -4) (5, 7, -8) (-5, 3, -7)
+Shluk 3:
+    Stred: (-7.00, 4.75, 6.00)
+    Body: (-3, 4, 8) (-7, 8, 2) (-4, 8, 8) (-9, 6, 7) (-8, -3, 7)
+
+
+VYSLEDOK:
+Shluk 1:
+    Stred: (5.50, 1.00, 5.50)
+    Body: (5, -7, 8) (6, 9, 3)
+Shluk 2:
+    Stred: (-2.67, 1.33, -6.33)
+    Body: (-8, -6, -4) (5, 7, -8) (-5, 3, -7)
+Shluk 3:
+    Stred: (-6.20, 4.60, 6.40)
+    Body: (-3, 4, 8) (-7, 8, 2) (-4, 8, 8) (-9, 6, 7) (-8, -3, 7)
