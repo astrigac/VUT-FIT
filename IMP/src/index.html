@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED controller</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: black;
+        }
+    
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-gap: 10px;
+        }
+    
+        button {
+            padding: 10px;
+            font-size: 16px;
+        }
+    
+        .mode-label,
+        .speed-label {
+            grid-column: span 2;
+            text-align: center;
+            font-weight: bold;
+            color: whitesmoke;
+            font-size: x-large;
+            padding-top: 30px;
+        }
+
+        .rgb-button,
+        .led-button {
+            background-color: lightgrey;
+            color: black;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+        }
+
+        .connect-button {
+            display: inline-block;
+            background-color: lightgrey;
+            color: black;
+            padding: 5px 10px;
+            margin-top: 30px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            grid-column: span 2;
+            line-height: 1;
+        }
+        .disconnect-button {
+            display: inline-block;
+            background-color: lightcoral;
+            color: black;
+            padding: 5px 10px;
+            margin-top: 10px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            grid-column: span 2;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+
+<div class="button-grid">
+    <span class="mode-label">MODE</span>
+    <button class="rgb-button" id="rgbModeUpButton">RGB ↑</button>
+    <button class="led-button" id="ledModeUpButton">LEDs ↑</button>
+    <button class="rgb-button" id="rgbModeDownButton">RGB ↓</button>
+    <button class="led-button" id="ledModeDownButton">LEDs ↓</button>
+    <span class="speed-label">SPEED</span>
+    <button class="rgb-button" id="rgbSpeedUpButton">RGB ↑</button>
+    <button class="led-button" id="ledSpeedUpButton">LEDs ↑</button>
+    <button class="rgb-button" id="rgbSpeedDownButton">RGB ↓</button>
+    <button class="led-button" id="ledSpeedDownButton">LEDs ↓</button>
+    <button class="connect-button" id="pairDeviceButton">Pair Bluetooth Device</button>
+    <button class="disconnect-button" id="disconnectDeviceButton">Disconnect</button>
+</div>
+
+<script>
+    // UUIDs
+    const SERVICE_UUID = '32c37b84-8cc4-44b6-a35a-f871c2c51fa0';
+    const CHARACTERISTIC_UUID = 'ee6d23f3-f052-471c-b789-5a2318dc415d';
+
+    // Global variables
+    let bluetoothDevice;
+    let bluetoothGattServer;
+    let bluetoothCharacteristic;
+
+    // Function to connect to the Bluetooth device and get the characteristic
+    function connectToBluetoothDevice() {
+        navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SERVICE_UUID]
+        })
+        .then(device => {
+            bluetoothDevice = device;
+            return device.gatt.connect();
+        })
+        .then(server => {
+            bluetoothGattServer = server;
+            return server.getPrimaryService(SERVICE_UUID);
+        })
+        .then(service => service.getCharacteristic(CHARACTERISTIC_UUID))
+        .then(characteristic => {
+            bluetoothCharacteristic = characteristic;
+            console.log('Connected and characteristic retrieved');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+
+    // Function to disconnect from the Bluetooth device
+    function disconnectFromBluetoothDevice() {
+        if (!bluetoothGattServer) {
+            console.log("No Bluetooth device is connected.");
+            return;
+        }
+        if (bluetoothGattServer.connected) {
+            bluetoothGattServer.disconnect();
+            console.log("Disconnected from the Bluetooth device.");
+        } else {
+            console.log("Bluetooth device is already disconnected.");
+        }
+    }
+
+    // Function to send a command to the ESP32
+    function sendCommand(command) {
+        if (!bluetoothCharacteristic) {
+            console.log('Not connected to a device yet.');
+            return;
+        }
+
+        let encoder = new TextEncoder();
+        bluetoothCharacteristic.writeValue(encoder.encode(command))
+        .then(() => {
+            console.log(`Command "${command}" sent`);
+        })
+        .catch(error => {
+            console.error('Error sending command:', error);
+        });
+    }
+
+    // Event listeners
+    document.getElementById('pairDeviceButton').addEventListener('pointerup', function() {
+        connectToBluetoothDevice();
+    });
+
+    document.getElementById('disconnectDeviceButton').addEventListener('pointerup', function() {
+    disconnectFromBluetoothDevice();
+    });
+
+    document.getElementById('rgbSpeedUpButton').addEventListener('click', function() {
+        sendCommand('RGB_SPEED_UP');
+    });
+
+    document.getElementById('ledSpeedUpButton').addEventListener('click', function() {
+        sendCommand('LED_SPEED_UP');
+    });
+
+    document.getElementById('rgbSpeedDownButton').addEventListener('click', function() {
+        sendCommand('RGB_SPEED_DOWN');
+    });
+
+    document.getElementById('ledSpeedDownButton').addEventListener('click', function() {
+        sendCommand('LED_SPEED_DOWN');
+    });
+
+    document.getElementById('rgbModeUpButton').addEventListener('click', function() {
+        sendCommand('RGB_MODE_UP');
+    });
+
+    document.getElementById('ledModeUpButton').addEventListener('click', function() {
+        sendCommand('LED_MODE_UP');
+    });
+
+    document.getElementById('rgbModeDownButton').addEventListener('click', function() {
+        sendCommand('RGB_MODE_DOWN');
+    });
+
+    document.getElementById('ledModeDownButton').addEventListener('click', function() {
+        sendCommand('LED_MODE_DOWN');
+    });
+</script>
+
+</body>
+</html>
