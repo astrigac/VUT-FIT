@@ -1,0 +1,391 @@
+#!/bin/bash
+
+export POSIXLY_CORRECT=yes
+export LC_NUMERIC=en_US.UTF-8
+
+hint() {
+    echo "Usage: corona [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]"
+    echo " "
+    echo "Options:"
+    echo "  COMMAND can be one of:"
+    echo "      infected — counts the number of infected"
+    echo "      merge - merges several files with records into one, preserving the original order"
+    echo "              (the header will be output only once)"
+    echo "      gender - lists the number of infected for each sex"
+    echo "      age - lists statistics on the number of infected people by age"
+    echo "      daily - lists statistics of infected persons for individual days"
+    echo "      monthly - lists statistics of infected persons for individual months"
+    echo "      yearly - lists statistics on infected people for each year"
+    echo "      countries - lists statistics of infected persons for individual countries of the disease"
+    echo "              (excluding the Czech Republic)"
+    echo "      districts - lists statistics on infected persons for individual districts"
+    echo "      regions - lists statistics of infected persons for individual regions"
+    echo "  FILTERS can be a combination of the following (each at most once):"
+    echo "      -a DATETIME - after: only records AFTER this date (including this date)"
+    echo "                    are considered. DATETIME is in the format YYYY-MM-DD"
+    echo "      -b DATETIME - before: only records BEFORE this date (including this date) are considered"
+    echo "      -g GENDER - only records of infected people of a given gender are considered"
+    echo "                  GENDER can be M (men) or Z (women)"
+    echo "      -s [WIDTH] - for gender, age, daily, monthly, yearly, countries, districts, and regions"
+    echo "                   commands lists data not numerically but graphically in the form of histograms."
+    echo "                   The optional parameter WIDTH sets the width of the histograms, ie the length"
+    echo "                   of the longest line, to WIDTH. Thus, WIDTH must be a positive integer."
+}
+
+function isDateValid() {
+    #získavam argument funkcie
+    DATE=$1
+
+    if [[ $DATE =~ ^[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9]$ ]]; then
+        day=$(echo $DATE | cut -d'-' -f3)
+        month=$(echo $DATE | cut -d'-' -f2)
+        year=$(echo $DATE | cut -d'-' -f1)
+
+        if [ "$month" == "01" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "02" ]; then
+            #bežný rok, neprechodný
+            if [ "$day" -lt "29" ] && [ "$day" -gt "00" ]; then
+                return 1
+            #prechodný rok, deň môže byť 29 a rok musí byť deliteľný 4
+            elif [ "$day" -eq "29" ] && [ "$((year % 4))" -eq "0" ]; then
+                #ak je rok delitelný 100, tak musí byť aj 400
+                if [ "$((year % 100))" -eq "0" ]; then
+                    if [ "$((year % 400))" -ne "0" ]; then
+                        return 0
+                    fi
+                fi
+                return 1
+            else
+                return 0
+            fi
+        elif [ "$month" == "03" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "04" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "05" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "06" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "07" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "08" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "09" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "10" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "11" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" == "12" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        fi
+        return 0
+    else
+        return 0
+    fi
+}
+
+COMMAND=""
+LOG=""
+GZIP_LOG=""
+BZIP2_LOG=""
+CSV_FILE=".csv"
+GZIP_FILE=".gz"
+BZIP2_FILE=".bz2"
+HEAD="id,datum,vek,pohlavi,kraj_nuts_kod,okres_lau_kod,nakaza_v_zahranici,nakaza_zeme_csu_kod,reportovano_khs"
+s_used="false"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+    infected | merge | gender | age | daily | monthly | yearly | countries | districts | regions)
+        if [ -z "$COMMAND" ]; then
+            COMMAND="$1"
+            shift
+        else
+            echo "ERROR: Too many commands" >&2
+            exit 1
+        fi
+        ;;
+
+    -h)
+        hint
+        exit 0
+        ;;
+
+    -a)
+        if ! [ -z "$AFTER_DATE" ]; then
+            echo "ERROR: Each filter can be used only once" >&2
+            exit 1
+        fi
+
+        if isDateValid $2; then
+            echo "ERROR: Date $2 is invalid" >&2
+            exit 1
+        fi
+
+        AFTER_DATE="$2"
+        shift
+        shift
+        ;;
+
+    -b)
+        if ! [ -z "$BEFORE_DATE" ]; then
+            echo "ERROR: Each filter can be used only once" >&2
+            exit 1
+        fi
+
+        if isDateValid $2; then
+            echo "ERROR: Date $2 is invalid" >&2
+            exit 1
+        fi
+
+        BEFORE_DATE="$2"
+        shift
+        shift
+        ;;
+
+    -g)
+        if ! [ -z "$GENDER" ]; then
+            echo "ERROR: Each filter can be used only once" >&2
+            exit 1
+        fi
+
+        if [ "$2" = "Z" ] || [ "$2" = "M" ]; then
+            GENDER="$2"
+            shift
+            shift
+        else
+            echo "ERROR: Gender $2 is invalid" >&2
+            exit 1
+        fi
+        ;;
+
+    -s)
+        if [ "$s_used" = "true" ]; then
+            echo "ERROR: Each filter can be used only once" >&2
+            exit 1
+        fi
+
+        s_used="true"
+        WIDTH=""
+        if ! [[ $2 =~ ^[0-9]+$ ]]; then
+            shift
+        else
+
+            WIDTH="$2"
+            shift
+            shift
+        fi
+        ;;
+
+    *)
+        if [[ "$1" = *"$GZIP_FILE" ]]; then
+            GZIP_LOG="$1"
+            shift
+        elif [[ "$1" = *"$BZIP2_FILE" ]]; then
+            BZIP2_LOG="$1"
+            shift
+        elif [[ "$1" = *"$CSV_FILE" ]]; then
+            LOG="$1"
+            shift
+        else
+            shift
+        fi
+        ;;
+
+    esac
+done
+
+#Čítanie súboru
+if ! [ -z "$GZIP_LOG" ]; then
+    OG_IN="gzip -d -c $GZIP_LOG | cat $LOG"
+elif ! [ -z "$BZIP2_LOG" ]; then
+    OG_IN="bzip2 -d -c $BZIP2_LOG | cat $LOG"
+elif ! [ -z "$LOG" ]; then
+    OG_IN="cat $LOG"
+else
+    OG_IN="cat -"
+fi
+
+if [ -z "$AFTER_DATE" ]; then
+    AFTER_DATE="0000-00-00"
+fi
+
+if [ -z "$BEFORE_DATE" ]; then
+    BEFORE_DATE="9999-99-99"
+fi
+
+#filtrujem dátumy automaticky, pohlavie je voliteľné
+FILTERED_IN=$(eval $OG_IN | awk -F, -v date_before="$BEFORE_DATE" -v date_after="$AFTER_DATE" '$2>= date_after && $2<= date_before { print }')
+
+#spúštanie funkcií
+if ! [ -z "$GENDER" ]; then
+    FILTERED_IN=$(echo "$FILTERED_IN" | awk -F, -v gend=$GENDER '$4 == gend { print }')
+fi
+
+#ak používateľ nezadal command, automaticky sa nastaví na merge
+if [ -z "$COMMAND" ]; then
+    COMMAND="merge"
+fi
+
+if [ "$COMMAND" = "infected" ]; then
+    echo "$FILTERED_IN" | awk -v infected_c=0 '{ infected_c++ } 
+        END { print infected_c }'
+    exit 0
+fi
+
+if [ "$COMMAND" = "merge" ]; then
+    echo "$HEAD"
+    echo "$FILTERED_IN"
+    exit 0
+fi
+
+if [ "$COMMAND" = "gender" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[$4]++ }
+        END { for (i in a) {if(i == "") print("None: "a[i]);
+                            else print i": "a[i] }}' | sort)"
+    exit 0
+fi
+
+if [ $COMMAND == "age" ]; then
+    echo "$FILTERED_IN" | awk -F, -v param=$FILTER_WIDTH '
+    BEGIN{
+    c5=0
+    c15=0
+    c25=0
+    c35=0
+    c45=0
+    c55=0
+    c65=0
+    c75=0
+    c85=0
+    c95=0
+    c105=0
+    cTitan=0
+    cNone=0
+    }{
+    if($3 == ""){
+        cNone++
+    } else if ($3 > 105){
+        cTitan++
+    } else if($3 > 95){
+        c105++
+    } else if($3 > 85){
+        c95++
+    } else if($3 > 75){
+        c85++
+    } else if($3 > 65){
+        c75++
+    } else if($3 > 55){
+        c65++
+    } else if($3 > 45){
+        c55++
+    } else if($3 > 35){
+        c45++
+    } else if($3 > 25){
+        c35++
+    } else if($3 > 15){
+        c25++
+    } else if($3 > 5){
+        c15++
+    } else if ($3 >= 0){
+        c5++
+    }}    
+    END{
+    printf("0-5   :%8d\n",c5 )
+    printf("6-15  :%8d\n",c15 )
+    printf("16-25 :%8d\n",c25 )
+    printf("26-35 :%8d\n",c35 )
+    printf("36-45 :%8d\n",c45 )
+    printf("46-55 :%8d\n",c55 )
+    printf("56-65 :%8d\n",c65 )
+    printf("66-75 :%8d\n",c75 )
+    printf("76-85 :%8d\n",c85 )
+    printf("86-95 :%8d\n",c95 )
+    printf("96-105:%8d\n",c105 )
+    printf(">105  :%8d\n",cTitan )
+    if (cNone > 0){
+    printf("None  :%8d\n",cNone )
+    }}'
+    exit 0
+fi
+
+if [ "$COMMAND" = "daily" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[$2]++ }
+        END { for (i in a) {if(i == "") print("None: "a[i]);
+                            else print i": "a[i]) }}' | sort)"
+    exit 0
+fi
+
+if [ "$COMMAND" = "monthly" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[substr($2,1,7)]++ }
+        END { for (i in a) {if(i == "") print("None: "a[i]);
+                            else print i": "a[i] }}' | sort)"
+    exit 0
+
+fi
+
+if [ "$COMMAND" = "yearly" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[substr($2,1,4)]++ }
+        END { for (i in a) {if(i == "") print("None: "a[i]);
+                            else print i": "a[i] }}' | sort)"
+    exit 0
+
+fi
+
+if [ $COMMAND = "countries" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[$8]++ }
+        END { for (i in a) {if(i != "CZ" && i != "") print i": "a[i]}}' | sort)"
+    exit 0
+
+fi
+
+if [ "$COMMAND" = "districts" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[$6]++ }
+        END { for (i in a) {if (i == "") print("None: "a[i]);
+                            else print i": "a[i]}}' | sort)"
+    exit 0
+
+fi
+
+if [ "$COMMAND" = "regions" ]; then
+    echo "$(echo "$FILTERED_IN" | awk -F, '{ a[$5]++ }
+        END { for (i in a) {if(i == "") print("None: "a[i]);
+                            else print i": "a[i]}}' | sort)"
+    exit 0
+
+fi

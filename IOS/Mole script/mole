@@ -1,0 +1,654 @@
+#!/bin/bash
+#Aurel Strigac <xstrig00>
+#16.03.2023
+
+export POSIXLY_CORRECT=yes
+export LC_NUMERIC=en_US.UTF-8
+export LC_ALL=C
+
+hint() {
+    echo ""
+    echo "     //==================================================================================================================||"
+    echo "    //                                                                                                                   ||"
+    echo "   //                                                        USAGE                                                       ||"
+    echo "  //                                                                                                                     ||"
+    echo " //======================================================================================================================||"
+    echo "||                                          |                                                                            ||"
+    echo "||                mole -h                   |    Prints help for using the script                                        ||"
+    echo "||                                          |                                                                            ||"
+    echo "||------------------------------------------|----------------------------------------------------------------------------||"
+    echo "||                                          |                                                                            ||"
+    echo "||         mole [ -g GROUP ] FILE           |    The specified file will be opened.                                      ||"
+    echo "||                                          |    If the -g switch was specified, the given file opening will also        ||"
+    echo "||                                          |    be assigned to a group named GROUP. Either new or existing one.         ||"
+    echo "||                                          |                                                                            ||"
+    echo "||------------------------------------------|----------------------------------------------------------------------------||"
+    echo "||                                          |                                                                            ||"
+    echo "||  mole [ -m ] [ FILTERS ] [ DIRECTORY ]   |    If DIRECTORY matches an existing directory, the script selects a file   ||"
+    echo "||                                          |    from that directory to open.                                            ||"
+    echo "||                                          |    If no directory is specified, the current directory is assumed.         ||"
+    echo "||                                          |    If multiple files were edited by the script in the given directory,     ||"
+    echo "||                                          |    the file that was last opened (edited) using the script is selected.    ||"
+    echo "||                                          |    If the [ -m ] argument was specified, the script selects                ||"
+    echo "||                                          |    the file that was most often opened (edited) using the script.          ||"
+    echo "||                                          |                                                                            ||"
+    echo "||------------------------------------------|----------------------------------------------------------------------------||"
+    echo "||                                          |                                                                            ||"
+    echo "||   mole list [ FILTERS ] [ DIRECTORY ]    |    The script displays a list of files that were opened (edited)           ||"
+    echo "||                                          |    in the given directory using the script.                                ||"
+    echo "||                                          |                                                                            ||"
+    echo "||=======================================================================================================================||"
+    echo "||                                                                                                                       ||"
+    echo "||                                                        FILTERS                                                        ||"
+    echo "||                                                                                                                       ||"
+    echo "||=======================================================================================================================||"
+    echo "||                                      Can be a combination of the following filters                                    ||"
+    echo "||=======================================================================================================================||"
+    echo "||     [-g GROUP1[,GROUP2[,...]]]    |    Group specification.                                                           ||"
+    echo "||-----------------------------------|-----------------------------------------------------------------------------------||"
+    echo "||             [-a DATE]             |    Records of opened (edited) files before this date will not be considered.      ||"
+    echo "||-----------------------------------|-----------------------------------------------------------------------------------||"
+    echo "||             [-b DATE]             |    Records of opened (edited) files after this date will not be considered.       ||"
+    echo "||-----------------------------------|-----------------------------------------------------------------------------------||"
+    echo "||                [-r]               |    Mole will search even among records that refer to nested directories           ||"
+    echo "||-----------------------------------|-----------------------------------------------------------------------------------||"
+    echo "||                [-d]               |    Mole works only with entries without group assignation                        ||"
+    echo "||-----------------------------------|-----------------------------------------------------------------------------------||"
+    echo "||                            Disclaimer: The DATE argument needs to be in format YYYY-MM-DD.                            ||"
+    echo "||=======================================================================================================================||"
+    echo ""
+}
+
+check_realpath() {
+    if ! command -v realpath >/dev/null 2>&1; then
+        echo "[ ERROR ] Realpath is not available"
+    fi
+}
+
+printGeneralErrorMessage() {
+    echo "[ ERROR ] Wrong script usage" >&2
+    echo "For more information, use switch [-h] when starting your script" >&2
+}
+
+dateIsValid() {
+    #získavam argument funkcie
+    DATE=$1
+
+    if [[ $DATE =~ ^[0-9]{4}-[0-1][0-9]-[0-3][0-9]$ ]]; then
+        day=$(echo "$DATE" | cut -d'-' -f3)
+        month=$(echo "$DATE" | cut -d'-' -f2)
+        year=$(echo "$DATE" | cut -d'-' -f1)
+
+        if [ "$month" = "01" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "02" ]; then
+            #bežný rok, neprechodný
+            if [ "$day" -lt "29" ] && [ "$day" -gt "00" ]; then
+                return 1
+            #prechodný rok, deň môže byť 29 a rok musí byť deliteľný 4
+            elif [ "$day" -eq "29" ] && [ "$((year % 4))" -eq "0" ]; then
+                #ak je rok delitelný 100, tak musí byť aj 400
+                if [ "$((year % 100))" -eq "0" ]; then
+                    if [ "$((year % 400))" -ne "0" ]; then
+                        return 0
+                    fi
+                fi
+                return 1
+            else
+                return 0
+            fi
+        elif [ "$month" = "03" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "04" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "05" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "06" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "07" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "08" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "09" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "10" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "11" ]; then
+            if [ "$day" -gt "30" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        elif [ "$month" = "12" ]; then
+            if [ "$day" -gt "31" ] || [ "$day" -eq "00" ]; then
+                return 0
+            fi
+            return 1
+        fi
+        return 0
+    else
+        return 0
+    fi
+}
+
+check_realpath
+
+if [ -z "$MOLE_RC" ]; then
+    echo "[ ERROR ] MOLE_RC not defined" >&2
+    echo "For more information, use switch [-h] when starting your script" >&2
+    exit 1
+fi
+
+if ! [ -e "$MOLE_RC" ]; then
+    mkdir -p "$(dirname "$MOLE_RC")" # Vytvoriť cestu k súboru, ak neexistuje
+    touch "$MOLE_RC"                 # Vytvoriť súbor
+fi
+
+# Overenie, či je definovaná premenná EDITOR
+if [ -n "$EDITOR" ]; then
+    editor="$EDITOR"
+# Overenie, či je definovaná premenná VISUAL
+elif [ -n "$VISUAL" ]; then
+    editor="$VISUAL"
+# Ak nie sú definované premenné EDITOR ani VISUAL, použije sa vi
+else
+    editor="vi"
+fi
+
+FILE=""
+DIRECTORY=""
+GROUP_NAME=""
+
+most_used=false
+hint_requested=false
+recursion_used=false
+default_used=false
+FIRST_DATE="NON"
+
+while getopts ":g:mb:a:hrd" opt; do
+    case ${opt} in
+    g)
+        if [ -z "$GROUP_NAME" ]; then
+            GROUP_NAME=$OPTARG
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    r)
+        if [ $recursion_used = false ]; then
+            recursion_used=true
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    m)
+        if [[ -n "$AFTER_DATE" || -n "$BEFORE_DATE" || -n "$GROUP_NAME" ]]; then
+            printGeneralErrorMessage
+            exit 1
+        elif [ $most_used = false ]; then
+            most_used=true
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    b)
+        if [ -z "$BEFORE_DATE" ]; then
+            if dateIsValid "$OPTARG"; then
+                echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                exit 1
+            else
+                BEFORE_DATE=$OPTARG
+            fi
+
+            if [ -z "$FIRST_DATE" ]; then
+                FIRST_DATE="BEFORE"
+            fi
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    a)
+        if [ -z "$AFTER_DATE" ]; then
+            if dateIsValid "$OPTARG"; then
+                echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                exit 1
+            else
+                AFTER_DATE=$OPTARG
+            fi
+            if [ -z "$FIRST_DATE" ]; then
+                FIRST_DATE="AFTER"
+            fi
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    h)
+        if [ $hint_requested = false ]; then
+            hint_requested=true
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    d)
+        if [ $default_used = false ]; then
+            default_used=true
+        else
+            printGeneralErrorMessage
+            exit 1
+        fi
+        ;;
+    \?)
+        echo "[ ERROR ] Invalid option: -$OPTARG" 1>&2
+        exit 1
+        ;;
+    :)
+        echo "[ ERROR ] Option -$OPTARG requires an argument." 1>&2
+        exit 1
+        ;;
+    esac
+    [[ ${opt} == "h" ]] && hint_requested=true
+done
+
+#skontrolujem ci default a group neboli pouzite naraz
+if [[ $default_used == true && -n $GROUP_NAME ]]; then
+    echo " [ ERROR ] -d and -g can't be used together"
+    exit 1
+fi
+
+# skontroluje, či bol zadaný príznak -h a zároveň sú zadané príznaky -a, -b alebo -m
+if [[ $hint_requested == true && (-n "$AFTER_DATE" || -n "$BEFORE_DATE" || $most_used == true || -n "$GROUP_NAME" || $recursion_used == true || $default_used == true) ]]; then
+    echo "[ ERROR ] options -a, -b, -g and -m are not allowed with option -h." >&2
+    exit 1
+fi
+
+if [ "$hint_requested" == true ]; then
+    if [ "$#" -eq 0 ]; then
+        hint
+        exit 0
+    else
+        printGeneralErrorMessage
+        exit 1
+    fi
+fi
+
+shift $((OPTIND - 1))
+#---------------------------------------------------------------------------------  mole list  ---------------------------------------------------------------------------------
+if [ "$1" = "list" ]; then
+    shift
+    while getopts ":g:b:a:rd" opt; do
+        case ${opt} in
+        g)
+            if [ -z "$GROUP_NAME" ]; then
+                GROUP_NAME=$OPTARG
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        r)
+            if [ $recursion_used == false ]; then
+                recursion_used=true
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        b)
+            if [ -z "$BEFORE_DATE" ]; then
+                if dateIsValid "$OPTARG"; then
+                    echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                    exit 1
+                else
+                    BEFORE_DATE=$OPTARG
+                fi
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        a)
+            if [ -z "$AFTER_DATE" ]; then
+                if dateIsValid "$OPTARG"; then
+                    echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                    exit 1
+                else
+                    AFTER_DATE=$OPTARG
+                fi
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        d)
+            if [ $default_used == false ]; then
+                default_used=true
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        \?)
+            echo "[ ERROR ] Invalid option: -$OPTARG" 1>&2
+            exit 1
+            ;;
+        :)
+            echo "[ ERROR ] Option -$OPTARG requires an argument." 1>&2
+            exit 1
+            ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
+    if [[ $default_used == true && -n $GROUP_NAME ]]; then
+        echo " [ ERROR ] -d and -g can't be used together"
+        exit 1
+    fi
+
+    if [ -z "$AFTER_DATE" ]; then
+        AFTER_DATE="0000-00-00"
+    fi
+
+    if [ -z "$BEFORE_DATE" ]; then
+        BEFORE_DATE="9999-99-99"
+    fi
+
+    DIRECTORY=$1
+    if [ -z "$DIRECTORY" ]; then
+        DIRECTORY=$(pwd)
+    elif ! [[ -d "$DIRECTORY" ]]; then
+        echo "[ ERROR ] Directory $1 doesn't exist"
+        exit 1
+    fi
+
+    #ohranicujem zaznamy na zaklade terminov
+    FILTERED=$(awk -F, -v after="$AFTER_DATE" -v before="$BEFORE_DATE" '{ split($2, date, /[_]/); if (date[1] > after && date[1] < before) print }' "$MOLE_RC")
+
+    if [ -n "$GROUP_NAME" ]; then #filtrujem na zaklade skupin
+        FILTERED=$(echo "$FILTERED" | awk -F, -v groups="$GROUP_NAME" 'BEGIN {split(groups,a,",") } { for (i in a) { if ($3 == a[i]) { print; break } } }')
+    fi
+
+    if [ $default_used == true ]; then #vyfiltrujem vsetky bez skupiny
+        FILTERED=$(echo "$FILTERED" | awk 'BEGIN {FS=","} { if ($3 == "") print $0 }')
+    fi
+
+    if [ $recursion_used == true ]; then #Pouzite -r
+
+        FILTERED=$(echo "$FILTERED" | awk -v DIR="$DIRECTORY" '{ if (index($0, DIR) > 0) print }')
+
+    else
+
+        FILTERED=$(echo "$FILTERED" | awk -F, -v DIR="$DIRECTORY" '{ split($1, path, "/"); split(DIR, dir, "/"); if($1 ~ DIR && length(path) == length(dir)+1) { print $0 } }' | sort -t ',' -k1)
+
+    fi
+    #odstranim predponu ktora sa zhoduje s $DIRECTORY
+    FILTERED=$(echo "$FILTERED" | sed "s|^$DIRECTORY/||" | awk -F, '{print $1","$3}' | sort | uniq)
+
+    if ! [ "$FILTERED" == "," ]; then
+        LIST=$(echo "$FILTERED" | awk -F, '{
+            file=$1; group=$2;
+            groups[file] = groups[file] ? groups[file] "," group : group;
+            }
+        END {
+        for (file in groups) {
+            printf "%s:;%s\n", file, (groups[file] ? groups[file] : "-");
+        }
+        }' | column -t -s ";" | sed 's/  / /')
+        echo "$LIST" | sort
+    fi
+
+#---------------------------------------------------------------------------------  mole list  ---------------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------------  mole secret-log  ---------------------------------------------------------------------------------
+elif [ "$1" = "secret-log" ]; then # spracovanie príkazu mole secret-log
+    shift
+    #sem musim dat nacitanie arguentov, aj s FIRST_DATE
+
+    while getopts ":b:a:r" opt; do
+        case ${opt} in
+        r)
+            if [ $recursion_used == false ]; then
+                recursion_used=true
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        b)
+            if [ -z "$BEFORE_DATE" ]; then
+                if dateIsValid "$OPTARG"; then
+                    echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                    exit 1
+                else
+                    BEFORE_DATE=$OPTARG
+                fi
+
+                if [ -z "$FIRST_DATE" ]; then
+                    FIRST_DATE="BEFORE"
+                fi
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        a)
+            if [ -z "$AFTER_DATE" ]; then
+                if dateIsValid "$OPTARG"; then
+                    echo "[ ERROR ] Date $OPTARG is invalid" >&2
+                    exit 1
+                else
+                    AFTER_DATE=$OPTARG
+                fi
+                if [ -z "$FIRST_DATE" ]; then
+                    FIRST_DATE="AFTER"
+                fi
+            else
+                printGeneralErrorMessage
+                exit 1
+            fi
+            ;;
+        \?)
+            echo "[ ERROR ] Invalid option: -$OPTARG" 1>&2
+            exit 1
+            ;;
+        :)
+            echo "[ ERROR ] Option -$OPTARG requires an argument." 1>&2
+            exit 1
+            ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
+    if [ -z "$AFTER_DATE" ]; then
+        AFTER_DATE="0000-00-00"
+    fi
+
+    if [ -z "$BEFORE_DATE" ]; then
+        BEFORE_DATE="9999-99-99"
+    fi
+
+    if [[ $FIRST_DATE == "AFTER" && "$BEFORE_DATE" != "9999-99-99" ]]; then
+        printGeneralErrorMessage
+        exit 1
+    fi
+
+    DIRECTORIES="$1"
+    if [ -z "$DIRECTORIES" ]; then
+        DIRECTORIES=$(pwd)
+    fi
+
+    #Filtrujem datumy
+    FILTERED=$(awk -F, -v after="$AFTER_DATE" -v before="$BEFORE_DATE" '{ split($2, date, /[_]/); if (date[1] > after && date[1] < before) print }' "$MOLE_RC")
+    #Zoznam zoradim podla nazvov a ku kazdemu suboru vypisem vsetky datumy editacie, od najstarsieho ku najnovsiemu
+    FILTERED=$(echo "$FILTERED" | sort -t, -k1,1 | awk -F ',' '{a[$1]=a[$1]";"$2} END {for (i in a) print i""a[i]}' | sort)
+
+    if [ $recursion_used == true ]; then
+        #skupiny separujem pomocou medzere a potom zistujem ci sa nachada v riadku
+        FILTERED=$(echo "$FILTERED" | awk -F, -v dirs="$DIRECTORIES" 'BEGIN {split(dirs,a," ") } { for (i in a) { if (index($0, a[i]) > 0) { print; break } } }')
+    else
+        #skupiny separujem pomocou medzere a potom zistujem ci sa nachada v riadku
+        FILTERED=$(echo "$FILTERED" | awk -F, -v dirs="$DIRECTORIES" 'BEGIN {split(dirs,a," ") } { split($1, path, "/"); for (i in a) { split(a[i], dir, "/"); if ((index($0, a[i]) > 0) && length(path) == length(dir)+1) { print; break } } }')
+    fi
+
+    #skomprimovanie suboru
+    USER=$(whoami)
+    DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
+    mkdir -p ~/.mole
+    echo "$FILTERED" | bzip2 >~/.mole/log_"$USER"_"$DATETIME".bz2
+    #echo "$FILTERED" | bzip2 >log_"$USER"_"$DATETIME".bz2
+#---------------------------------------------------------------------------------  mole secret-log  ---------------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------------  mole FILE  ---------------------------------------------------------------------------------
+else #spracovanie prikazu mole FILE alebo mole DIRECTORY
+
+    if [ -z "$AFTER_DATE" ]; then
+        AFTER_DATE="0000-00-00"
+    fi
+
+    if [ -z "$BEFORE_DATE" ]; then
+        BEFORE_DATE="9999-99-99"
+    fi
+
+    if [[ -f $1 ]]; then
+        FILE="$1"
+        if [[ "$FIRST_DATE" != "NON" || $most_used == true || $recursion_used == true || $default_used == true ]]; then
+            printGeneralErrorMessage
+            exit 1
+        fi
+
+        if test -f "$FILE"; then
+            $editor "$FILE"
+            log_entry="$(realpath "$FILE"),$(date +"%Y-%m-%d_%H-%M-%S"),"
+            if [ -n "$GROUP_NAME" ]; then
+                log_entry+="$GROUP_NAME"
+            fi
+            echo "$log_entry" >>"$MOLE_RC"
+            shift
+        else
+            echo "[ ERROR ] File $FILE doesn't exist"
+            exit 1
+        fi
+        #---------------------------------------------------------------------------------  mole FILE  ---------------------------------------------------------------------------------
+
+        #---------------------------------------------------------------------------------  mole DIRECTORY  ---------------------------------------------------------------------------------
+    else
+        DIRECTORY="$1"
+        if [ -z "$DIRECTORY" ]; then
+            DIRECTORY=$(pwd)
+        elif ! [[ -d "$DIRECTORY" ]]; then
+            echo "[ ERROR ] Directory $1 doesn't exist"
+            exit 1
+        fi
+
+        #filtrujem datumy
+        FILTERED=$(awk -F, -v after="$AFTER_DATE" -v before="$BEFORE_DATE" '{ split($2, date, /[_]/); if (date[1] > after && date[1] < before) print }' "$MOLE_RC")
+
+        if [ -n "$GROUP_NAME" ]; then #filtrujem skupiny
+            FILTERED=$(echo "$FILTERED" | awk -F, -v groups="$GROUP_NAME" 'BEGIN {split(groups,a,",") } { for (i in a) { if ($3 == a[i]) { print; break } } }')
+        fi
+
+        if [ $default_used == true ]; then #vyfiltrujem vsetky bez skupiny
+            FILTERED=$(echo "$FILTERED" | awk 'BEGIN {FS=","} { if ($3 == "") print $0 }')
+        fi
+
+        FILTERED=$(echo "$FILTERED" | awk -F, '{ if (system("[[ -f " $1 " ]]") == 0) print }') #vyfiltrujem vsetky uz neexistujuce subory
+        #---------------------------------------------------------------------------------  -r && -m  ---------------------------------------------------------------------------------
+        if [[ $recursion_used == true && $most_used == true ]]; then #Pouzite: -r -m
+
+            FILTERED=$(echo "$FILTERED" | awk -v DIR="$DIRECTORY" '{ if (index($0, DIR) > 0) print }')                #recursive filter
+            DESIRED_FILE=$(echo "$FILTERED" | cut -d',' -f1 | sort | uniq -c | sort -rn | head -1 | awk '{print $2}') #most filter
+
+            #spustim a zapisem do to log suboru
+            if [ -n "$DESIRED_FILE" ]; then
+                $editor "$DESIRED_FILE"
+                log_entry="$(realpath "$DESIRED_FILE"),$(date +"%Y-%m-%d_%H-%M-%S"),"
+                echo "$log_entry" >>"$MOLE_RC"
+            else
+                echo "[ ERROR ] No file found"
+                exit 1
+            fi
+            #---------------------------------------------------------------------------------  -r && -m  ---------------------------------------------------------------------------------
+
+            #---------------------------------------------------------------------------------  -m  ---------------------------------------------------------------------------------
+        elif [ $most_used == true ]; then
+            DESIRED_FILE=$(echo "$FILTERED" | awk -F, -v DIR="$DIRECTORY" '{ split($1, path, "/"); split(DIR, dir, "/"); if($1 ~ DIR && length(path) == length(dir)+1) { print $1 } }' | cut -d',' -f1 | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+
+            #spustim a zapisem to do logu
+            if [ -n "$DESIRED_FILE" ]; then
+                $editor "$DESIRED_FILE"
+                log_entry="$(realpath "$DESIRED_FILE"),$(date +"%Y-%m-%d_%H-%M-%S"),"
+                echo "$log_entry" >>"$MOLE_RC"
+            else
+                echo "[ ERROR ] No file found"
+                exit 1
+            fi
+            #---------------------------------------------------------------------------------  -m  ---------------------------------------------------------------------------------
+
+            #---------------------------------------------------------------------------------  -r  ---------------------------------------------------------------------------------
+        elif [ $recursion_used == true ]; then #Pouzite -r
+
+            FILTERED=$(echo "$FILTERED" | awk -v DIR="$DIRECTORY" '{ if (index($0, DIR) > 0) print }') #recursive filter
+            DESIRED_FILE=$(echo "$FILTERED" | sort -t ',' -k2r | head -n 1 | awk -F ',' '{print $1}')
+
+            #spustim a zapisem to do log suboru
+            if [ -n "$DESIRED_FILE" ]; then
+                $editor "$DESIRED_FILE"
+                log_entry="$(realpath "$DESIRED_FILE"),$(date +"%Y-%m-%d_%H-%M-%S"),"
+                echo "$log_entry" >>"$MOLE_RC"
+            else
+                echo "[ ERROR ] No file found"
+                exit 1
+            fi
+            #---------------------------------------------------------------------------------  -r  ---------------------------------------------------------------------------------
+
+            #---------------------------------------------------------------------------------  no switch  ---------------------------------------------------------------------------------
+        else #Pouzite: nic
+            DESIRED_FILE=$(echo "$FILTERED" | awk -F, -v DIR="$DIRECTORY" '{ split($1, path, "/"); split(DIR, dir, "/"); if($1 ~ DIR && length(path) == length(dir)+1) { print $0 } }' | sort -t ',' -k2r | head -n 1 | awk -F ',' '{print $1}')
+
+            #spustim a zapisem do to log suboru
+            if [ -n "$DESIRED_FILE" ]; then
+                $editor "$DESIRED_FILE"
+                log_entry="$(realpath "$DESIRED_FILE"),$(date +"%Y-%m-%d_%H-%M-%S"),"
+                echo "$log_entry" >>"$MOLE_RC"
+            else
+                echo "[ ERROR ] No file found"
+                exit 1
+            fi
+        fi
+    fi
+    #---------------------------------------------------------------------------------  mole DIRECTORY  ---------------------------------------------------------------------------------
+fi
+exit 0
